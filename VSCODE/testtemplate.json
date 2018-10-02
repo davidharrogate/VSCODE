@@ -9,7 +9,19 @@
                 "type": "string"
             },
             "virtualMachineSize": {
-                "type": "string"
+                "type": "string",
+                "defaultValue": "Standard_D2_v2",
+                "allowedValues": [
+                  "Standard_A1",
+                  "Standard_A2",
+                  "Standard_A3",
+                  "Standard_D1_v2",
+                  "Standard_D2_v2",
+                  "Standard_D3_v2"
+                ],
+                "metadata": {
+                  "description": "The virtual machine size. Allowed values: Standard_A1, Standard_A2, Standard_A3."
+                }
             },
             "adminUsername": {
                 "type": "string"
@@ -77,7 +89,7 @@
                         },
                         "osDisk": {
                             "name": "[parameters('virtualMachineName')]",
-                            "createOption": "fromImage",
+                            "createOption": "FromImage",
                             "vhd": {
                                 "uri": "[concat(concat(reference(resourceId('AzureTraining', 'Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2015-06-15').primaryEndpoints['blob'], 'vhds/'), parameters('virtualMachineName'), '20170106094929.vhd')]"
                             }
