@@ -1,0 +1,149 @@
+{
+        "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+        "contentVersion": "1.0.0.0",
+        "parameters": {
+            "location": {
+                "type": "string"
+            },
+            "virtualMachineName": {
+                "type": "string"
+            },
+            "virtualMachineSize": {
+                "type": "string"
+            },
+            "adminUsername": {
+                "type": "string"
+            },
+            "storageAccountName": {
+                "type": "string"
+            },
+            "virtualNetworkName": {
+                "type": "string"
+            },
+            "networkInterfaceName": {
+                "type": "string"
+            },
+            "networkSecurityGroupName": {
+                "type": "string"
+            },
+            "adminPassword": {
+                "type": "securestring"
+            },
+            "storageAccountType": {
+                "type": "string"
+            },
+            "subnetName": {
+                "type": "string"
+            },
+            "publicIpAddressName": {
+                "type": "string"
+            },
+            "publicIpAddressType": {
+                "type": "string"
+            }
+        },
+        "variables": {
+            "vnetId": "[resourceId('AzureTraining','Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]",
+            "subnetRef": "[concat(variables('vnetId'), '/subnets/', parameters('subnetName'))]"
+        },
+        "resources": [
+            {
+                "name": "[parameters('virtualMachineName')]",
+                "type": "Microsoft.Compute/virtualMachines",
+                "apiVersion": "2015-06-15",
+                "location": "[parameters('location')]",
+                "dependsOn": [
+                    "[concat('Microsoft.Network/networkInterfaces/', parameters('networkInterfaceName'))]",
+                    "[concat('Microsoft.Storage/storageAccounts/', parameters('storageAccountName'))]"
+                ],
+                "properties": {
+                    "osProfile": {
+                        "computerName": "[parameters('virtualMachineName')]",
+                        "adminUsername": "[parameters('adminUsername')]",
+                        "adminPassword": "[parameters('adminPassword')]",
+                        "windowsConfiguration": {
+                            "provisionVmAgent": "true"
+                        }
+                    },
+                    "hardwareProfile": {
+                        "vmSize": "[parameters('virtualMachineSize')]"
+                    },
+                    "storageProfile": {
+                        "imageReference": {
+                            "publisher": "MicrosoftWindowsServer",
+                            "offer": "WindowsServer",
+                            "sku": "2016-Datacenter",
+                            "version": "latest"
+                        },
+                        "osDisk": {
+                            "name": "[parameters('virtualMachineName')]",
+                            "createOption": "fromImage",
+                            "vhd": {
+                                "uri": "[concat(concat(reference(resourceId('AzureTraining', 'Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2015-06-15').primaryEndpoints['blob'], 'vhds/'), parameters('virtualMachineName'), '20170106094929.vhd')]"
+                            }
+                        },
+                        "dataDisks": []
+                    },
+                    "networkProfile": {
+                        "networkInterfaces": [
+                            {
+                                "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaceName'))]"
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                "name": "[parameters('storageAccountName')]",
+                "type": "Microsoft.Storage/storageAccounts",
+                "apiVersion": "2015-06-15",
+                "location": "[parameters('location')]",
+                "properties": {
+                    "accountType": "[parameters('storageAccountType')]"
+                }
+            },
+            {
+                "name": "[parameters('networkInterfaceName')]",
+                "type": "Microsoft.Network/networkInterfaces",
+                "apiVersion": "2016-09-01",
+                "location": "[parameters('location')]",
+                "dependsOn": [
+                    "[concat('Microsoft.Network/publicIpAddresses/', parameters('publicIpAddressName'))]"
+                ],
+                "properties": {
+                    "ipConfigurations": [
+                        {
+                            "name": "ipconfig1",
+                            "properties": {
+                                "subnet": {
+                                    "id": "[variables('subnetRef')]"
+                                },
+                                "privateIPAllocationMethod": "Dynamic",
+                                "publicIpAddress": {
+                                    "id": "[resourceId('AzureTraining','Microsoft.Network/publicIpAddresses', parameters('publicIpAddressName'))]"
+                                }
+                            }
+                        }
+                    ],
+                    "networkSecurityGroup": {
+                        "id": "[resourceId('AzureTraining', 'Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupName'))]"
+                    }
+                }
+            },
+            {
+                "name": "[parameters('publicIpAddressName')]",
+                "type": "Microsoft.Network/publicIpAddresses",
+                "apiVersion": "2016-09-01",
+                "location": "[parameters('location')]",
+                "properties": {
+                    "publicIpAllocationMethod": "[parameters('publicIpAddressType')]"
+                }
+            }
+        ],
+        "outputs": {
+            "adminUsername": {
+                "type": "string",
+                "value": "[parameters('adminUsername')]"
+            }
+        }
+    }
