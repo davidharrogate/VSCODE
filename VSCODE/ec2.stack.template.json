@@ -1,0 +1,847 @@
+{
+    "AWSTemplateFormatVersion" : "2010-09-09",
+    "Description"              : "Pentana Customer Stack",
+    "Parameters"               : {
+        "StackNumber" : {
+            "Type" : "Number",
+            "Description" : "Enter stack number [1-75]. Must not be in use by any other stacks."
+        },
+		"RegionStackNo" : {
+		     "Type" : "Number",
+			 "Description" : "Enter the Region Stack Number where the tenant will be deployed",
+			 "AllowedValues" : [ "0","1","2","3","4","5","6","7","8","9" ]
+		 },
+		 "UpgradeStack" : {
+            "Type" :  "String",
+            "Description" : "Are you deploying an upgraded instance for an existing stack?",
+			"AllowedValues" : ["true","false"]
+
+        },
+		 "ParentStackName" : {
+            "Type" :  "String",
+            "Description" : "Enter the tenant name of the original customer stack you are upgrading. Only required if IsUpgrade is true."
+        },
+        "KeyName"     : {
+            "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+            "Type"        : "AWS::EC2::KeyPair::KeyName",
+            "ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
+        },
+
+        "DatabaseType" : {
+            "Description" : "Select the database backup to restore.",
+            "Type"        : "String",
+            "Default"     : "shell",
+            "AllowedValues" : [
+                "shell",
+                "demo"
+            ]
+        },
+        "Version"      : {
+            "Description" : "Select the Pentana version to deploy.",
+            "Type"        : "String",
+            "AllowedValues" : [
+                "v5.1.0.1",
+                "v5.1.0.3",
+                "v5.2.0.0",
+                "v5.2.0.1",
+				        "v5.2.0.2",
+				        "v5.2.0.4",
+				        "v5.3.0.1"
+            ]
+        },
+        "TimeZone"     : {
+            "Description" : "Select the time zone the customer has requested.",
+            "Type"        : "String",
+            "AllowedValues" : [
+                "Coordinated Universal Time",
+                "Dateline Standard Time",
+                "Samoa Standard Time",
+                "Hawaiian Standard Time",
+                "Alaskan Standard Time",
+                "Pacific Standard Time",
+                "Mountain Standard Time",
+                "Mexico Standard Time 2",
+                "U.S. Mountain Standard Time",
+                "Central Standard Time",
+                "Canada Central Standard Time",
+                "Mexico Standard Time",
+                "Central America Standard Time",
+                "Eastern Standard Time",
+                "U.S. Eastern Standard Time",
+                "S.A. Pacific Standard Time",
+                "Atlantic Standard Time",
+                "S.A. Western Standard Time",
+                "Pacific S.A. Standard Time",
+                "Newfoundland and Labrador Standard Time",
+                "E. South America Standard Time",
+                "S.A. Eastern Standard Time",
+                "Greenland Standard Time",
+                "Mid-Atlantic Standard Time",
+                "Azores Standard Time",
+                "Cape Verde Standard Time",
+                "GMT Standard Time",
+                "Greenwich Standard Time",
+                "Central Europe Standard Time",
+                "Central European Standard Time",
+                "Romance Standard Time",
+                "W. Europe Standard Time",
+                "W. Central Africa Standard Time",
+                "E. Europe Standard Time",
+                "Egypt Standard Time",
+                "FLE Standard Time",
+                "GTB Standard Time",
+                "Israel Standard Time",
+                "South Africa Standard Time",
+                "Russian Standard Time",
+                "Arab Standard Time",
+                "E. Africa Standard Time",
+                "Arabic Standard Time",
+                "Iran Standard Time",
+                "Arabian Standard Time",
+                "Caucasus Standard Time",
+                "Transitional Islamic State of Afghanistan Standard Time",
+                "Ekaterinburg Standard Time",
+                "West Asia Standard Time",
+                "India Standard Time",
+                "Nepal Standard Time",
+                "Central Asia Standard Time",
+                "Sri Lanka Standard Time",
+                "N. Central Asia Standard Time",
+                "Myanmar Standard Time",
+                "S.E. Asia Standard Time",
+                "North Asia Standard Time",
+                "China Standard Time",
+                "Singapore Standard Time",
+                "Taipei Standard Time",
+                "W. Australia Standard Time",
+                "North Asia East Standard Time",
+                "Korea Standard Time",
+                "Tokyo Standard Time",
+                "Yakutsk Standard Time",
+                "A.U.S. Central Standard Time",
+                "Cen. Australia Standard Time",
+                "A.U.S. Eastern Standard Time",
+                "E. Australia Standard Time",
+                "Tasmania Standard Time",
+                "Vladivostok Standard Time",
+                "West Pacific Standard Time",
+                "Central Pacific Standard Time",
+                "Fiji Islands Standard Time",
+                "New Zealand Standard Time",
+                "Tonga Standard Time"
+            ],
+            "Default"       : "Coordinated Universal Time"
+        },
+        "EnvType"      : {
+            "Description" : "Environment type.",
+            "Type"        : "String",
+            "AllowedValues" : [
+                "prod",
+                "demo"
+            ],
+            "ConstraintDescription" : "Must specify prod or demo."
+        },
+        "ImageId"      : {
+            "Type" : "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default" : "latestAmi"
+        },
+		"InitialStorageSize" : {
+		     "Type" : "Number",
+			 "AllowedValues" : ["30","60","90","120"],
+			 "Description" : "Select the initial data storage requirements (PRD + UAT data) in GB. If migration base on existing data size. New customers start on 30GB."
+		 }
+    },
+    "Conditions"               : {
+        "CreateProdResources" : {
+            "Fn::Equals" : [
+                {
+                    "Ref" : "EnvType"
+                },
+                "prod"
+            ]
+        },
+		"IsNotUpgrade" : {
+            "Fn::Equals" : [
+                {
+                    "Ref" : "UpgradeStack"
+                },
+                "false"
+            ]
+        },
+		"IsPrimaryStack" : {
+            "Fn::Equals" : [
+                {
+                    "Ref" : "RegionStackNo"
+                },
+                "0"
+            ]
+        },
+		"CreateProdNotUpgrade" : { "Fn::And" : [ {"Condition" : "IsNotUpgrade"}, {"Condition" : "CreateProdResources"} ] }
+    }, 
+
+	"Mappings" : { 
+	 "StorageMap" : { 
+		"30": { "size" : "90" },
+		"60": { "size" : "180" },
+		"90": { "size" : "270" },
+		"120": { "size" : "360" }
+	 }
+	},
+    "Resources"                : {
+        "RouteAssociation" : {
+            "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties" : {
+                "RouteTableId" : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "routeTableId"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "routeTableId-", { "Ref" : "RegionStackNo" } ] ]}} ] },
+                "SubnetId"     : {
+                    "Ref" : "Subnet"
+                }
+            }
+        },
+        "Subnet"           : {
+            "Type" : "AWS::EC2::Subnet",
+            "Properties" : {
+                "CidrBlock" : {
+                    "Fn::Join" : [
+                        ".",
+                        [
+                            "10",
+                            {
+								"Ref" : "RegionStackNo"
+							},
+                            {
+                                "Ref" : "StackNumber"
+                            },
+                            "0/24"
+                        ]
+                    ]
+                },
+                "VpcId"     : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "vpcId"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "vpcId-", { "Ref" : "RegionStackNo" } ] ]}} ] }
+            },
+            "Metadata"   : {
+                "MyStack" : {
+                    "Ref" : "AWS::StackId"
+                },
+                "AWS::CloudFormation::Designer" : {
+                    "id" : "0c386b12-88f5-4a50-973e-af4893dacbd4"
+                }
+            }
+        },
+        "SecurityGroup"    : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : {
+                    "Fn::Join" : [
+                        "",
+                        [
+                            "Stack-",
+                            {
+                                "Ref" : "AWS::StackName"
+                            },
+                            "-SG"
+                        ]
+                    ]
+                },
+                "VpcId"            : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "vpcId"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "vpcId-", { "Ref" : "RegionStackNo" } ] ]}} ] },
+                "SecurityGroupIngress" : [
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort"   : "443",
+                        "ToPort"     : "443",
+                        "SourceSecurityGroupId" : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "elbgroup"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "elbgroup-", { "Ref" : "RegionStackNo" } ] ]}} ] }
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort"   : "3389",
+                        "ToPort"     : "3389",
+                        "SourceSecurityGroupId" : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "vpngroup"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "vpngroup-", { "Ref" : "RegionStackNo" } ] ]}} ] }
+                    }
+                ]
+            },
+            "Metadata"   : {
+                "AWS::CloudFormation::Designer" : {
+                    "id" : "4adf78a2-be2f-41c5-8c37-3b4f134e33d3"
+                }
+            }
+        },
+        "Ec2Instance"      : {
+            "Type" : "AWS::EC2::Instance",
+            "Properties" : {
+                "ImageId" : {
+                    "Ref" : "ImageId"
+                },
+                "DisableApiTermination" : false,
+                "InstanceType"          :  { "Fn::If" : ["CreateProdResources", "m4.large", "t2.large" ]},
+                "KeyName"               : {
+                    "Ref" : "KeyName"
+                },
+                "UserData"              : {
+                    "Fn::Base64" : {
+                        "Fn::Join" : [
+                            "",
+                            [
+                               "<powershell>\n",
+                                "Set-ExecutionPolicy Unrestricted -Force\n",
+								"$timer = [system.diagnostics.stopwatch]::StartNew()\n",
+								"Import-Module AWSPowershell -force\n",
+								"$instanceId = Invoke-RestMethod -uri http://169.254.169.254/latest/meta-data/instance-id\n",
+								"$tag = New-Object Amazon.EC2.Model.Tag\n",
+								"$tag.Key = \"Setup-Status\"\n",
+								"$tag.Value = \"Setting Timezone\"\n",
+								{ "Fn::Sub" : "New-EC2Tag -Resource $instanceId -Tag $tag -Region ${AWS::Region}\n" },
+                                "Set-TimeZone -Name '",
+                                {
+                                    "Ref" : "TimeZone"
+                                },
+                                "'\n",
+								"$tag.Value = \"Setting DNS\"\n",
+								{ "Fn::Sub" : "New-EC2Tag -Resource $instanceId -Tag $tag -Region ${AWS::Region}\n" },
+                                "Get-NetIPInterface |\n",
+                                "where AddressFamily -EQ 'ipv4' |\n",
+                                "Set-DnsClientServerAddress -ServerAddresses ('8.8.8.8')\n",
+                                "#Initialise disks \n",
+								"$tag.Value = \"Initialising Disks\"\n",
+								{ "Fn::Sub" : "New-EC2Tag -Resource $instanceId -Tag $tag -Region ${AWS::Region}\n" },
+                                "$disk \n",
+                                "while(!$disk)\n",
+                                "{\n",
+                                "$disk = Get-Disk |\n",
+                                "Where number -EQ 2\n",
+                                "}\n",
+                                "Get-Disk |\n",
+                                "Where number -EQ 1 |\n",
+                                "Initialize-Disk -PartitionStyle MBR -PassThru |\n",
+                                "New-Partition -DriveLetter 'D' -UseMaximumSize |\n",
+                                "Format-Volume -FileSystem NTFS -Confirm:$false\n",
+                                "Get-Disk |\n",
+                                "Where number -EQ 2 |\n",
+                                "Initialize-Disk -PartitionStyle MBR -PassThru |\n",
+                                "New-Partition -DriveLetter 'E' -UseMaximumSize |\n",
+                                "Format-Volume -FileSystem NTFS -Confirm:$false\n",
+                                "#Disable 8.3 filenames\n",
+                                "FSUTIL.EXE 8dot3name set C: 1\n",
+                                "FSUTIL.EXE 8dot3name set D: 1\n",
+                                "FSUTIL.EXE 8dot3name set E: 1\n",
+                                "#Create temp location for downloaded files\n",
+								"$tag.Value = \"Downloading deploy scripts\"\n",
+								{ "Fn::Sub" : "New-EC2Tag -Resource $instanceId -Tag $tag -Region ${AWS::Region}\n" },
+                                "mkdir -Path d:\\mssql\\data  -ErrorAction Ignore\n",
+                                "mkdir -Path e:\\mssql\\backup  -ErrorAction Ignore\n",
+                                "mkdir -Path c:\\temp\n",
+                                "cd C:\\temp\n",
+                                "set-defaultawsregion eu-west-1\n",
+                                "Read-S3Object -BucketName pentana-deployment -key ideagenpentana2017.pfx -File C:\\temp\\ideagenpentana2017.pfx\n",
+                                "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQLServer' -Name DefaultData -Value 'D:\\mssql\\data\\'\n",
+                                "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQLServer' -Name DefaultLog -Value 'D:\\mssql\\data\\'\n",
+                                "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Microsoft SQL Server\\MSSQL13.MSSQLSERVER\\MSSQLServer' -Name BackupDirectory -Value 'E:\\mssql\\backup'\n",
+                                "Stop-Service MSSQLServer -Force\n",
+                                "Start-Service MSSQLServer\n",
+								"Start-Service SQLSERVERAGENT\n",
+                                "#Import certificate and retrieve to variable\n",
+								"$tag.Value = \"Setting up SSL binding\"\n",
+								{ "Fn::Sub" : "New-EC2Tag -Resource $instanceId -Tag $tag -Region ${AWS::Region}\n" },
+                                "$mypwd = ConvertTo-SecureString -String '!V%XC@L9TB3UaJPs' -Force -AsPlainText\n",
+                                "import-pfxcertificate -Exportable -FilePath 'C:\\temp\\ideagenpentana2017.pfx' -CertStoreLocation 'Cert:\\LocalMachine\\my' -password $mypwd\n",
+                                "$cert = (Get-ChildItem Cert:\\LocalMachine\\my | where-object { $_.Subject -like '*.ideagenpentana*' }  | Select-Object -First 1).Thumbprint\n",
+                                "#Create SSL binding and attach certificate\n",
+                                "Import-Module WebAdministration\n",
+                                "New-WebBinding -name 'Default Web Site' -Protocol https -Port 443\n",
+                                "New-Item -Path 'IIS:\\SslBindings\\*!443' -Thumbprint $cert\n",
+                                "$url='https://s3.amazonaws.com/aws-cli/AWSCLI64.msi'\n",
+                                "$output='C:\\temp\\awscli64.msi'\n",
+                                "(New-Object System.Net.WebClient).DownloadFile($url, $output)\n",
+                                "msiexec -i C:\\temp\\awscli64.msi /q\n",
+                                "$A = New-ScheduledTaskAction -Execute 'c:\\program files\\amazon\\awscli\\aws.exe' -Argument 's3 sync E:\\mssql\\backup s3://pentana-",
+                                { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "RegionStackName"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "RegionStackName-", { "Ref" : "RegionStackNo" } ] ]}} ] },
+                                "-backups/",
+                                {
+                                    "Ref" : "AWS::StackName"
+                                },
+                                " --sse --region ",
+                                {
+                                    "Ref" : "AWS::Region"
+                                },
+                                "'\n",
+                                "$T = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 60)\n",
+                                "$P = New-ScheduledTaskPrincipal -UserId 'Administrator' -LogonType S4U\n",
+                                "$S = New-ScheduledTaskSettingsSet -StartWhenAvailable\n",
+                                "$D = New-ScheduledTask -Action $A -Principal $P -Trigger $T -Settings $S\n",
+                                "Register-ScheduledTask 'DR Backup Sync' -InputObject $D\n",
+                                "</powershell>"
+                            ]
+                        ]
+                    }
+                },
+                "IamInstanceProfile"    : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "InstanceProfile"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "InstanceProfile-", { "Ref" : "RegionStackNo" } ] ]}} ] },
+                "SecurityGroupIds"      : [
+                   {"Ref" : "SecurityGroup"}
+                ],
+                "SubnetId"              :  {"Ref" : "Subnet"} ,
+                "Tags"                  : [
+                    {
+                        "Key" : "Patch Group",
+                        "Value" : {
+                            "Fn::If" : [
+                                "CreateProdResources",
+                                "pentana-production",
+                                "pentana-demo"
+                            ]
+                        }
+                    },
+                    {
+                        "Key" : "RegionId",
+                        "Value" : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "RegionStackName"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "RegionStackName-", { "Ref" : "RegionStackNo" } ] ]}} ] }
+                    },
+                    {
+                        "Key" : "Version",
+                        "Value" : {
+                            "Ref" : "Version"
+                        }
+                    }
+                ]
+            },
+            "Metadata"   : {
+                "AWS::CloudFormation::Designer" : {
+                    "id" : "fb954ffe-7e71-4c62-b1ef-fc93dc2db2fb"
+                }
+            }
+        },
+        "DiskUsageCAlarm"  : {
+            "Type" : "AWS::CloudWatch::Alarm",
+            "Condition" :  "CreateProdResources",
+            "Properties" : {
+                "ComparisonOperator" : "LessThanOrEqualToThreshold",
+                "EvaluationPeriods"  : "2",
+                "MetricName"         : "FreeDiskPercentageC",
+                "Namespace"          : "Windows/Default",
+                "Period"             : "300",
+                "Statistic"          : "Average",
+                "Threshold"          : "5",
+                "Dimensions"         : [
+                    {
+                        "Name" : "InstanceId",
+                        "Value" : {
+                            "Ref" : "Ec2Instance"
+                        }
+                    }
+                ],
+                "AlarmActions"       : [
+                    {
+                        "Fn::Join" : [
+                            "",
+                            [
+                                "arn:aws:sns:",
+                                {
+                                    "Ref" : "AWS::Region"
+                                },
+                                ":534697915782:pentana-soft-alert"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "DependsOn"  : "Ec2Instance"
+        },
+        "DiskUsageDAlarm"  : {
+            "Type" : "AWS::CloudWatch::Alarm",
+            "Condition" : "CreateProdResources",
+            "Properties" : {
+                "ComparisonOperator" : "LessThanOrEqualToThreshold",
+                "EvaluationPeriods"  : "2",
+                "MetricName"         : "FreeDiskPercentageD",
+                "Namespace"          : "Windows/Default",
+                "Period"             : "300",
+                "Statistic"          : "Average",
+                "Threshold"          : "5",
+                "Dimensions"         : [
+                    {
+                        "Name" : "InstanceId",
+                        "Value" : {
+                            "Ref" : "Ec2Instance"
+                        }
+                    }
+                ],
+                "AlarmActions"       : [
+                    {
+                        "Fn::Join" : [
+                            "",
+                            [
+                                "arn:aws:sns:",
+                                {
+                                    "Ref" : "AWS::Region"
+                                },
+                                ":534697915782:pentana-soft-alert"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "DependsOn"  : "Ec2Instance"
+        },
+        "DiskUsageEAlarm"  : {
+            "Type" : "AWS::CloudWatch::Alarm",
+            "Condition" : "CreateProdResources",
+            "Properties" : {
+                "ComparisonOperator" : "LessThanOrEqualToThreshold",
+                "EvaluationPeriods"  : "2",
+                "MetricName"         : "FreeDiskPercentageE",
+                "Namespace"          : "Windows/Default",
+                "Period"             : "300",
+                "Statistic"          : "Average",
+                "Threshold"          : "5",
+                "Dimensions"         : [
+                    {
+                        "Name" : "InstanceId",
+                        "Value" : {
+                            "Ref" : "Ec2Instance"
+                        }
+                    }
+                ],
+                "AlarmActions"       : [
+                    {
+                        "Fn::Join" : [
+                            "",
+                            [
+                                "arn:aws:sns:",
+                                {
+                                    "Ref" : "AWS::Region"
+                                },
+                                ":534697915782:pentana-soft-alert"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "DependsOn"  : "Ec2Instance"
+        },
+        "RAMUsageEAlarm"   : {
+            "Type" : "AWS::CloudWatch::Alarm",
+            "Condition" : "CreateProdResources",
+            "Properties" : {
+                "ComparisonOperator" : "GreaterThanOrEqualToThreshold",
+                "EvaluationPeriods"  : "2",
+                "MetricName"         : "Memory",
+                "Namespace"          : "Windows/Default",
+                "Period"             : "300",
+                "Statistic"          : "Average",
+                "Threshold"          : "95",
+                "Dimensions"         : [
+                    {
+                        "Name" : "InstanceId",
+                        "Value" : {
+                            "Ref" : "Ec2Instance"
+                        }
+                    }
+                ],
+                "AlarmActions"       : [
+                    {
+                        "Fn::Join" : [
+                            "",
+                            [
+                                "arn:aws:sns:",
+                                {
+                                    "Ref" : "AWS::Region"
+                                },
+                                ":534697915782:pentana-soft-alert"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "DependsOn"  : "Ec2Instance"
+        },
+        "StatusCheckAlarm" : {
+            "Type" : "AWS::CloudWatch::Alarm",
+            "Properties" : {
+                "ComparisonOperator" : "GreaterThanThreshold",
+                "EvaluationPeriods"  : "5",
+                "MetricName"         : "StatusCheckFailed_System",
+                "Namespace"          : "AWS/EC2",
+                "Period"             : "60",
+                "Statistic"          : "Sum",
+                "Threshold"          : "0",
+                "Dimensions"         : [
+                    {
+                        "Name" : "InstanceId",
+                        "Value" : {
+                            "Ref" : "Ec2Instance"
+                        }
+                    }
+                ],
+                "AlarmActions"       : [
+				{
+                        "Fn::Join" : [
+                            "",
+                            [
+                                "arn:aws:automate:",
+                                {
+                                    "Ref" : "AWS::Region"
+                                },
+                                ":ec2:recover"
+                            ]
+                        ]
+                    },
+                    {
+                        "Fn::Join" : [
+                            "",
+                            [
+                                "arn:aws:sns:",
+                                {
+                                    "Ref" : "AWS::Region"
+                                },
+                                ":534697915782:pentana-soft-alert"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "DependsOn"  : "Ec2Instance"
+        },
+        "dataVol"          : {
+            "Type" : "AWS::EC2::Volume",
+            "Properties" : {
+                "AvailabilityZone" : {
+                    "Fn::GetAtt" : [
+                        "Ec2Instance",
+                        "AvailabilityZone"
+                    ]
+                },
+                "Encrypted"        : true,
+                "KmsKeyId"         : {
+                    "Fn::Join" : [
+                        "",
+                        [
+                            "arn:aws:kms:",
+                            {
+                                "Ref" : "AWS::Region"
+                            },
+                            ":534697915782:key/",
+                            {
+                                "Fn::ImportValue" : "ebsKeyARN"
+                            }
+                        ]
+                    ]
+                },
+                "VolumeType"       : "gp2",
+                "Size"             : {
+                    "Fn::If" : [
+                        "CreateProdResources",
+                        { "Ref" : "InitialStorageSize" },
+                        "30"
+                    ]
+                }
+            },
+            "DeletionPolicy" : "Snapshot"
+        },
+        "dataVolAttachment" : {
+            "Type" : "AWS::EC2::VolumeAttachment",
+            "Properties" : {
+                "Device" : "xvdf",
+                "InstanceId" : {
+                    "Ref" : "Ec2Instance"
+                },
+                "VolumeId"   : {
+                    "Ref" : "dataVol"
+                }
+            },
+            "DependsOn"  : "dataVol"
+        },
+        "backupVol"         : {
+            "Type" : "AWS::EC2::Volume",
+            "Properties" : {
+                "AvailabilityZone" : {
+                    "Fn::GetAtt" : [
+                        "Ec2Instance",
+                        "AvailabilityZone"
+                    ]
+                },
+                "Encrypted"        : true,
+                "KmsKeyId"         : {
+                    "Fn::Join" : [
+                        "",
+                        [
+                            "arn:aws:kms:",
+                            {
+                                "Ref" : "AWS::Region"
+                            },
+                            ":534697915782:key/",
+                            {
+                                "Fn::ImportValue" : "ebsKeyARN"
+                            }
+                        ]
+                    ]
+                },
+                "VolumeType"       : "gp2",
+                "Size"             : {
+                    "Fn::If" : [
+                        "CreateProdResources",
+                         { "Fn::FindInMap" : [ "StorageMap", { "Ref" : "InitialStorageSize" } , "size" ]} ,
+                        "10"
+                    ]
+                }
+            },
+            "DeletionPolicy" : "Snapshot"
+        },
+        "backupVolAttachment" : {
+            "Type" : "AWS::EC2::VolumeAttachment",
+            "Properties" : {
+                "Device" : "xvdg",
+                "InstanceId" : {
+                    "Ref" : "Ec2Instance"
+                },
+                "VolumeId"   : {
+                    "Ref" : "backupVol"
+                }
+            },
+            "DependsOn"  : [
+                "backupVol",
+                "dataVolAttachment"
+            ]
+        },
+        "FlowLog"             : {
+            "Type" : "AWS::EC2::FlowLog",
+            "Properties" : {
+                "DeliverLogsPermissionArn" : "arn:aws:iam::534697915782:role/flowlogsRole",
+                "LogGroupName"             : {
+                    "Fn::Join" : [
+                        "",
+                        [
+                            "FlowLog-",
+                            {
+                                "Ref" : "AWS::StackName"
+                            }
+                        ]
+                    ]
+                },
+                "ResourceId"               : {
+                    "Ref" : "Subnet"
+                },
+                "ResourceType"             : "Subnet",
+                "TrafficType"              : "ALL"
+            },
+            "DependsOn"  : [
+                "Subnet"
+            ]
+        },
+        "TargetGroup"         : {
+            "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties" : {
+                "Port" : "443",
+                "Protocol" : "HTTPS",
+                "HealthCheckPath" : "/pentanaPRD/service/tngservice.svc",
+                "TargetGroupAttributes" : [
+                ],
+                "Targets"               : [
+                    {
+                        "Id" : {
+                            "Ref" : "Ec2Instance"
+                        },
+                        "Port" : 443
+                    }
+                ],
+                "VpcId"                 : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "vpcId"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "vpcId-", { "Ref" : "RegionStackNo" } ] ]}} ] }
+            },
+            "Metadata"   : {
+                "AWS::CloudFormation::Designer" : {
+                    "id" : "9a3226e9-321f-462e-a92f-866fd3079e77"
+                }
+            },
+            "DependsOn"  : [
+                "Ec2Instance"
+            ]
+        },
+        "ListenerRule"        : {
+			"Condition" : "IsNotUpgrade", 
+			"DeletionPolicy" : "Retain",
+            "Type" : "AWS::ElasticLoadBalancingV2::ListenerRule",
+            "Properties" : {
+                "Actions" : [
+                    {
+                        "Type" : "forward",
+                        "TargetGroupArn" : {
+                            "Ref" : "TargetGroup"
+                        }
+                    }
+                ],
+                "Conditions" : [
+                    {
+                        "Field" : "host-header",
+                        "Values" : [
+                            {
+                                "Fn::Join" : [
+                                    "",
+                                    [
+                                        {
+                                            "Ref" : "AWS::StackName"
+                                        },
+                                        ".ideagenpentana.com"
+                                    ]
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "ListenerArn" : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "elblistener"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "elblistener-", { "Ref" : "RegionStackNo" } ] ]}} ] },
+                "Priority"    : {
+                    "Fn::Join" : [
+                        "",
+                        [
+                            {
+                                "Ref" : "StackNumber"
+                            },
+                            "0"
+                        ]
+                    ]
+                }
+            },
+            "Metadata"   : {
+                "AWS::CloudFormation::Designer" : {
+                    "id" : "634136fa-4c4e-495b-b049-7cfd30f7d905"
+                }
+            },
+            "DependsOn"  : [
+                "TargetGroup"
+            ]
+        },
+        "DNS"                 : {
+			"Condition" : "IsNotUpgrade",
+            "Type" : "AWS::Route53::RecordSet", 
+			"DeletionPolicy" : "Retain",
+            "Properties" : {
+                "Name" : {
+                    "Fn::Join" : [
+                        "",
+                        [
+                            {
+                                "Ref" : "AWS::StackName"
+                            },
+                            ".ideagenpentana.com."
+                        ]
+                    ]
+                },
+                "Type" : "A",
+                "AliasTarget" : {
+                    "HostedZoneId" : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "elbCname"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "elbCname-", { "Ref" : "RegionStackNo" } ] ]}} ] },
+                    "DNSName"      : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "elbDNS"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "elbDNS-", { "Ref" : "RegionStackNo" } ] ]}} ] }
+                },
+                "HostedZoneId" : "Z26YD2P39XFQTP"
+            }
+        }
+    },
+    "Outputs"                  : {
+        "InstanceId" : {
+            "Description" : "InstanceId of the newly created EC2 instance",
+            "Value"       : {
+                "Ref" : "Ec2Instance"
+            }
+        },
+        "AZ"         : {
+            "Description" : "Availability Zone of the newly created EC2 instance",
+            "Value"       : {
+                "Fn::GetAtt" : [
+                    "Ec2Instance",
+                    "AvailabilityZone"
+                ]
+            }
+        }
+    }
+}
