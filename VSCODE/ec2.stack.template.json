@@ -14,19 +14,13 @@
 		 "UpgradeStack" : {
             "Type" :  "String",
             "Description" : "Are you deploying an upgraded instance for an existing stack?",
-			"AllowedValues" : ["true","false"]
-
-        },
-		 "ParentStackName" : {
-            "Type" :  "String",
-            "Description" : "Enter the tenant name of the original customer stack you are upgrading. Only required if IsUpgrade is true."
+            "Default"     : "false"
         },
         "KeyName"     : {
             "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instance",
             "Type"        : "AWS::EC2::KeyPair::KeyName",
             "ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
         },
-
         "DatabaseType" : {
             "Description" : "Select the database backup to restore.",
             "Type"        : "String",
@@ -353,6 +347,13 @@
                                 "$S = New-ScheduledTaskSettingsSet -StartWhenAvailable\n",
                                 "$D = New-ScheduledTask -Action $A -Principal $P -Trigger $T -Settings $S\n",
                                 "Register-ScheduledTask 'DR Backup Sync' -InputObject $D\n",
+                                "$tag.Value = \"Setup complete.\"\n",
+								{ "Fn::Sub" : "New-EC2Tag -Resource $instanceId -Tag $tag -Region ${AWS::Region}\n" },
+								"$timer.Stop()\n",
+								"$tag2 = New-Object Amazon.EC2.Model.Tag\n",
+								"$tag2.Key = \"UserData-Runtime\"\n",
+								"$tag2.Value = $timer.Elapsed.Minutes.ToString()+\" mins\"\n",
+								{ "Fn::Sub" : "New-EC2Tag -Resource $instanceId -Tag $tag2 -Region ${AWS::Region}\n" },
                                 "</powershell>"
                             ]
                         ]
