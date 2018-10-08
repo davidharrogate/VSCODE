@@ -36,19 +36,6 @@
                 "demo"
             ]
         },
-        "Version"      : {
-            "Description" : "Select the Pentana version to deploy.",
-            "Type"        : "String",
-            "AllowedValues" : [
-                "v5.1.0.1",
-                "v5.1.0.3",
-                "v5.2.0.0",
-                "v5.2.0.1",
-				        "v5.2.0.2",
-				        "v5.2.0.4",
-				        "v5.3.0.1"
-            ]
-        },
         "TimeZone"     : {
             "Description" : "Select the time zone the customer has requested.",
             "Type"        : "String",
@@ -390,13 +377,7 @@
                     {
                         "Key" : "RegionId",
                         "Value" : { "Fn::If" : ["IsPrimaryStack", {"Fn::ImportValue" : "RegionStackName"} , {"Fn::ImportValue" : {"Fn::Join" : [ "", [ "RegionStackName-", { "Ref" : "RegionStackNo" } ] ]}} ] }
-                    },
-                    {
-                        "Key" : "Version",
-                        "Value" : {
-                            "Ref" : "Version"
-                        }
-                    }
+                    }     
                 ]
             },
             "Metadata"   : {
